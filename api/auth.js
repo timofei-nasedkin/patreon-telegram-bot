@@ -85,7 +85,7 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка сохранения данных в Supabase.');
     }
 
-    // 5. Вычисляем время жизни ссылки (+7 дней)
+    // 5. Генерируем ссылку через Telegram API
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -93,9 +93,8 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
     }
 
-    const nowMillis = Date.now();
-    const nowSec = Math.floor(nowMillis / 1000);
-    const expireDate = nowSec + 604800; // Ровно +7 дней в секундах
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expireDate = nowSec + 604800; // Ровно +7 дней
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -104,7 +103,8 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          expire_date: expireDate,
+          name: `User_${telegramId}`,
+          expire_date: expireDate
         }),
       }
     );
@@ -121,34 +121,24 @@ export default async function handler(req, res) {
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 6. Дублируем отправку в личные сообщения Telegram
+    // 6. Отправляем ссылку в личные сообщения
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: telegramId,
-        text: `🎉 Подписка на Patreon успешно подтверждена!\n\nВот ваша ссылка для входа в закрытую группу (действует 7 дней):\n${inviteLink}`,
+        text: `🎉 Подписка на Patreon успешно подтверждена!\n\nВаша персональная ссылка (действует 7 дней):\n${inviteLink}`,
       }),
     });
 
-    // 7. Вывод результата и времени прямо в окно браузера
+    // 7. Вывод в браузер
     return res.send(`
       <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
-        <p>Ссылка также отправлена вам в личные сообщения в Telegram.</p>
-        
+        <p>Ссылка отправлена в Telegram.</p>
         <hr style="margin: 20px 0;">
-        
-        <h3>Сгенерированная ссылка:</h3>
+        <h3>Ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
-        
-        <h3>Отладка времени (Server vs Telegram):</h3>
-        <ul style="background: #f4f4f4; padding: 15px; border-radius: 5px; list-style-type: none;">
-          <li><b>Текущее время сервера (ISO):</b> ${new Date(nowMillis).toISOString()}</li>
-          <li><b>Текущий Timestamp (сек):</b> ${nowSec}</li>
-          <li><b>Timestamp истечения (+7 дней):</b> ${expireDate}</li>
-          <li><b>Время истечения (ISO):</b> ${new Date(expireDate * 1000).toISOString()}</li>
-        </ul>
       </div>
     `);
 
