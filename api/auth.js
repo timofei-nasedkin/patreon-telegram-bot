@@ -65,7 +65,7 @@ export default async function handler(req, res) {
       return (
         patronStatus === 'active_patron' || 
         patronStatus === 'declined_patron' || 
-        !!patronStatus // Разрешаем любой существующий статус членства (включая пробный период)
+        !!patronStatus
       );
     });
 
@@ -87,7 +87,7 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка сохранения данных в Supabase.');
     }
 
-    // 5. Генерируем одноразовую инвайт-ссылку в закрытую группу (на 24 часа)
+    // 5. Генерируем одноразовую инвайт-ссылку в закрытую группу (на 24 часа = 86400 сек)
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -95,7 +95,9 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
     }
 
-    const expireDate = Math.floor(Date.now() / 1000) + 86400; // 24 часа в секундах
+    // Ровно +24 часа от текущего времени сервера в секундах (UNIX Timestamp)
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    const expireDate = nowInSeconds + 86400; 
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -105,7 +107,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           chat_id: chatId,
           expire_date: expireDate,
-          member_limit: 1, // Ссылка только на 1 человека
+          member_limit: 1, // Лимит 1 использование
         }),
       }
     );
@@ -116,7 +118,6 @@ export default async function handler(req, res) {
       console.error('Telegram Invite Error:', inviteData);
       return res.status(500).send(`
         <h3>Ошибка при создании ссылки в Telegram</h3>
-        <p>Telegram отклонил запрос. Проверьте, дали ли вы боту права администратора с галочкой «Добавление участников» в группе.</p>
         <p><b>Технический ответ от Telegram:</b></p>
         <pre>${JSON.stringify(inviteData, null, 2)}</pre>
       `);
