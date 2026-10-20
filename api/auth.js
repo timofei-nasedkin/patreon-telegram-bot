@@ -85,7 +85,7 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка сохранения данных в Supabase.');
     }
 
-    // 5. Генерируем ссылку через Telegram API
+    // 5. Генерируем ссылку через Telegram API (на 7 дней)
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 6. Отправляем ссылку в личные сообщения
+    // 6. Отправляем ту же самую ссылку в личные сообщения
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -131,13 +131,13 @@ export default async function handler(req, res) {
       }),
     });
 
-    // 7. Вывод в браузер
+    // 7. Вывод ссылки на экран браузера
     return res.send(`
       <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
-        <p>Ссылка отправлена в Telegram.</p>
+        <p>Ссылка также продублирована вам в личные сообщения Telegram.</p>
         <hr style="margin: 20px 0;">
-        <h3>Ссылка:</h3>
+        <h3>Ваша персональная ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
       </div>
     `);
