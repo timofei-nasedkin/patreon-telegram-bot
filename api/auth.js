@@ -6,10 +6,14 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  const { code } = req.query;
+  const { code, state: telegramId } = req.query;
 
   if (!code) {
     return res.status(400).send('Ошибка: Отсутствует код авторизации от Patreon.');
+  }
+
+  if (!telegramId) {
+    return res.status(400).send('Ошибка: Не найден Telegram ID (state). Попробуйте запустить бота заново через /start.');
   }
 
   try {
@@ -30,50 +34,39 @@ export default async function handler(req, res) {
 
     if (!tokenData.access_token) {
       console.error('Patreon Token Error:', tokenData);
-      return res.status(400).send('Ошибка авторизации в Patreon: не удалось получить токен.');
+      return res.status(400).send(`Ошибка авторизации в Patreon: не удалось получить токен. Детали: ${JSON.stringify(tokenData)}`);
     }
 
     const patreonAccessToken = tokenData.access_token;
 
-    // 2. Получаем данные профиля пользователя и его активные подписки из Patreon API
-    const userResponse = await fetch(
-      'https://www.patreon.com/api/oauth2/v2/identity?include=memberships,memberships.campaign&fields[user]=email,full_name&fields[member]=status,patron_status',
-      {
-        headers: { Authorization: `Bearer ${patreonAccessToken}` },
-      }
-    );
+    // 2. Получаем данные профиля пользователя из Patreon API
+    const userResponse = await fetch('https://www.patreon.com/api/oauth2/v2/identity?include=memberships,memberships.campaign', {
+      headers: { Authorization: `Bearer ${patreonAccessToken}` },
+    });
 
     const userData = await userResponse.json();
+    console.log('Patreon API Full Response:', JSON.stringify(userData));
+
     const patreonUserId = userData.data?.id;
 
     if (!patreonUserId) {
-      return res.status(400).send('Не удалось определить ID пользователя Patreon.');
+      return res.status(400).send(`Не удалось определить ID пользователя Patreon. Ответ от сервера: <pre>${JSON.stringify(userData, null, 2)}</pre>`);
     }
 
     // 3. Проверяем наличие активной подписки
-    // Ищем в поле included элементы с типом "member", у которых статус active
     const memberships = userData.included?.filter(item => item.type === 'member') || [];
     const hasActiveSubscription = memberships.some(
       m => m.attributes?.status === 'active_patron' || m.attributes?.patron_status === 'active_patron'
     );
 
+    // Примечание: если вы хотите тестировать без активной подписки, временно закомментируйте блок ниже
     if (!hasActiveSubscription) {
       return res.status(403).send(
         '<h3>Активная подписка не найдена</h3><p>У вас нет активной подписки на наш Patreon. Пожалуйста, оформите подписку, чтобы получить доступ в закрытую группу.</p>'
       );
     }
 
-    // 4. Достаем Telegram ID из state (который мы передавали при старте) или из сессии/кук
-    // Для простоты примера предположим, что state передавался в query. 
-    // Если state не использовался, можно запросить связку через временное хранилище.
-    // Здесь мы ожидаем, что state содержит Telegram ID:
-    const telegramId = req.query.state;
-
-    if (!telegramId) {
-      return res.status(400).send('Ошибка: Не найден Telegram ID (state). Попробуйте запустить бота заново через /start.');
-    }
-
-    // 5. Сохраняем связку в Supabase
+    // 4. Сохраняем связку в Supabase
     const { error: dbError } = await supabase
       .from('links')
       .upsert([{ telegram_id: parseInt(telegramId), patreon_id: patreonUserId }], {
@@ -82,19 +75,18 @@ export default async function handler(req, res) {
 
     if (dbError) {
       console.error('Supabase Error:', dbError);
-      return res.status(500).send('Ошибка сохранения данных в базу.');
+      return res.status(500).send('Ошибка сохранения данных в базу данных Supabase.');
     }
 
-    // 6. Генерируем одноразовую инвайт-ссылку в закрытую группу через Telegram Bot API
+    // 5. Генерируем одноразовую инвайт-ссылку в закрытую группу через Telegram Bot API (на 24 часа)
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID; // ID вашей закрытой группы (-100...)
+    const chatId = process.env.TELEGRAM_CHAT_ID; // ID закрытой группы (-100...)
 
     if (!chatId) {
-      return res.status(500).send('Ошибка конфигурации: на сервере не задан TELEGRAM_CHAT_ID.');
+      return res.status(500).send('Ошибка конфигурации: на сервере не задана переменная TELEGRAM_CHAT_ID.');
     }
 
-    // Ссылка действует 24 часа (в секундах: 86400) и только для 1 человека
-    const expireDate = Math.floor(Date.now() / 1000) + 86400;
+    const expireDate = Math.floor(Date.now() / 1000) + 86400; // 24 часа в секундах
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -118,7 +110,7 @@ export default async function handler(req, res) {
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 7. Отправляем инвайт-ссылку пользователю в личные сообщения Telegram
+    // 6. Отправляем инвайт-ссылку пользователю в личные сообщения Telegram
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -128,13 +120,13 @@ export default async function handler(req, res) {
       }),
     });
 
-    // 8. Красивый ответ в браузере
+    // 7. Финальный ответ в окне браузера
     return res.send(
       '<h2>Авторизация и проверка успешна!</h2><p>Мы отправили персональную ссылку-приглашение в закрытую группу вам в личные сообщения Telegram. Можете закрыть это окно.</p>'
     );
 
   } catch (err) {
     console.error('Auth Handler Error:', err);
-    return res.status(500).send('Внутренняя ошибка сервера при обработке авторизации.');
+    return res.status(500).send(`Внутренняя ошибка сервера: ${err.message}`);
   }
 }
