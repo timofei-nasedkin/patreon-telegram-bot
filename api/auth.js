@@ -87,17 +87,13 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка сохранения данных в Supabase.');
     }
 
-    // 5. Генерируем одноразовую инвайт-ссылку в закрытую группу (на 24 часа = 86400 сек)
+    // 5. Генерируем одноразовую инвайт-ссылку в закрытую группу (строго на 1 вступление)
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!chatId) {
       return res.status(500).send('Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
     }
-
-    // Ровно +24 часа от текущего времени сервера в секундах (UNIX Timestamp)
-    const nowInSeconds = Math.floor(Date.now() / 1000);
-    const expireDate = nowInSeconds + 86400; 
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -106,8 +102,7 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          expire_date: expireDate,
-          member_limit: 1, // Лимит 1 использование
+          member_limit: 1, // Ссылка сгорит сразу после первого же использования
         }),
       }
     );
@@ -131,7 +126,7 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: telegramId,
-        text: `🎉 Подписка на Patreon успешно подтверждена!\n\nВот ваша персональная ссылка для входа в закрытую группу (действует 24 часа):\n${inviteLink}`,
+        text: `🎉 Подписка на Patreon успешно подтверждена!\n\nВот ваша персональная ссылка для входа в закрытую группу:\n${inviteLink}`,
       }),
     });
 
