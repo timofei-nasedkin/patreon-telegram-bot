@@ -53,11 +53,23 @@ export default async function handler(req, res) {
       return res.status(400).send(`Не удалось определить ID пользователя Patreon. Ответ от сервера: <pre>${JSON.stringify(userData, null, 2)}</pre>`);
     }
 
-    // 3. Проверяем наличие активной подписки
+   // 3. Проверяем наличие активной подписки или пробного периода
     const memberships = userData.included?.filter(item => item.type === 'member') || [];
-    const hasActiveSubscription = memberships.some(
-      m => m.attributes?.status === 'active_patron' || m.attributes?.patron_status === 'active_patron'
-    );
+    console.log('User Memberships:', JSON.stringify(memberships)); // Выведет детали подписок в логи Vercel
+
+    const hasActiveSubscription = memberships.some(m => {
+      const status = m.attributes?.status;
+      const patronStatus = m.attributes?.patron_status;
+      
+      // Разрешаем активный статус или бесплатный пробный период (free_trial)
+      return (
+        status === 'active_patron' || 
+        patronStatus === 'active_patron' || 
+        status === 'free_trial' || 
+        patronStatus === 'free_trial' ||
+        status === 'active'
+      );
+    });
 
     // Примечание: если вы хотите тестировать без активной подписки, временно закомментируйте блок ниже
     if (!hasActiveSubscription) {
