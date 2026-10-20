@@ -52,7 +52,7 @@ export default async function handler(req, res) {
     const patreonUserId = userData.data?.id;
 
     if (!patreonUserId) {
-      return res.status(400).send('Não удалось определить ID пользователя Patreon.');
+      return res.status(400).send('Не удалось определить ID пользователя Patreon.');
     }
 
     // 3. Проверяем наличие подписки или пробного периода
@@ -121,10 +121,11 @@ export default async function handler(req, res) {
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 6. Отправляем в Telegram с HTML-разметкой, чтобы ссылка гарантированно была кликабельной
-    const telegramMessage = `🎉 <b>Подписка на Patreon успешно подтверждена!</b>\n\nВаша персональная ссылка (действует 7 дней):\n<a href="${inviteLink}">${inviteLink}</a>`;
+    // 6. Формируем текст с видимым таймстемпом генерации для Telegram
+    const humanTime = new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Kyiv' });
+    const telegramMessage = `🎉 <b>Подписка на Patreon успешно подтверждена!</b>\n\n⏱ <b>Время создания:</b> <code>${humanTime}</code>\n\nВаша персональная ссылка (действует 7 дней):\n<a href="${inviteLink}">${inviteLink}</a>`;
 
-    const sendMsgResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -134,16 +135,15 @@ export default async function handler(req, res) {
       }),
     });
 
-    const sendMsgData = await sendMsgResponse.json();
-    console.log('Telegram SendMessage Response:', sendMsgData);
-
-    // 7. Вывод ссылки на экран браузера
+    // 7. Вывод на экран браузера
     return res.send(`
       <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
-        <p>Ссылка отправлена в Telegram с использованием HTML-разметки.</p>
+        <p>Сообщение со временем генерации отправлено в Telegram.</p>
         <hr style="margin: 20px 0;">
-        <h3>Ваша персональная ссылка:</h3>
+        <h3>Время генерации:</h3>
+        <p><b>${humanTime}</b></p>
+        <h3>Ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
       </div>
     `);
