@@ -85,8 +85,7 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка сохранения данных в Supabase.');
     }
 
-    // 5. Генерируем ссылку с ЗАЯВКОЙ НА ВСТУПЛЕНИЕ (creates_join_request: true)
-    // Это обходит проблему ошибки "ссылка истекла" для тех, кто ранее выходил из группы.
+    // 5. Генерируем ссылку через Telegram API со сроком действия ровно 2 дня (48 часов = 172800 секунд)
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -96,7 +95,7 @@ export default async function handler(req, res) {
 
     const nowMillis = Date.now();
     const nowSec = Math.floor(nowMillis / 1000);
-    const expireSec = nowSec + 604800; // 7 дней
+    const expireSec = nowSec + 172800; // Ровно 2 дня в секундах
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -105,9 +104,8 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          name: `JoinReq_${telegramId}_${nowMillis}`,
-          expire_date: expireSec,
-          creates_join_request: true // Главный параметр для возвращенцев
+          name: `User_${telegramId}_${nowMillis}`,
+          expire_date: expireSec
         }),
       }
     );
@@ -124,7 +122,7 @@ export default async function handler(req, res) {
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 6. Форматируем время для сообщения
+    // 6. Форматируем время создания и окончания по Киеву
     const formatter = new Intl.DateTimeFormat('ru-RU', {
       timeZone: 'Europe/Kyiv',
       day: '2-digit',
@@ -140,8 +138,8 @@ export default async function handler(req, res) {
 
     const telegramMessage = `🎉 <b>Подписка на Patreon успешно подтверждена!</b>\n\n` +
       `📌 <b>Создано:</b> ${createdAtKyiv}\n` +
-      `⏳ <b>Действует до:</b> ${expireAtKyiv} (по Киеву)\n\n` +
-      `Нажмите на ссылку ниже, чтобы отправить заявку на вступление в группу:\n<a href="${inviteLink}">${inviteLink}</a>`;
+      `⏳ <b>Действует до:</b> ${expireAtKyiv} (по Киеву, 2 суток)\n\n` +
+      `Ваша персональная ссылка:\n<a href="${inviteLink}">${inviteLink}</a>`;
 
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
@@ -157,10 +155,10 @@ export default async function handler(req, res) {
     return res.send(`
       <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
-        <p>Ссылка с запросом на вступление отправлена в Telegram.</p>
+        <p>Ссылка с ограничением в 2 суток отправлена в Telegram.</p>
         <hr style="margin: 20px 0;">
         <p><b>Создано:</b> ${createdAtKyiv}</p>
-        <p><b>Действует до:</b> ${expireAtKyiv}</p>
+        <p><b>Действует до:</b> ${expireAtKyiv} (по Киеву)</p>
         <h3>Ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
       </div>
