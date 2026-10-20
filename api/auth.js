@@ -52,7 +52,7 @@ export default async function handler(req, res) {
     const patreonUserId = userData.data?.id;
 
     if (!patreonUserId) {
-      return res.status(400).send('Не удалось определить ID пользователя Patreon.');
+      return res.status(400).send('Não удалось определить ID пользователя Patreon.');
     }
 
     // 3. Проверяем наличие подписки или пробного периода
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          name: `User_${telegramId}`,
+          name: `User_${telegramId}_${Date.now()}`,
           expire_date: expireDate
         }),
       }
@@ -121,21 +121,27 @@ export default async function handler(req, res) {
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 6. Отправляем ту же самую ссылку в личные сообщения
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    // 6. Отправляем в Telegram с HTML-разметкой, чтобы ссылка гарантированно была кликабельной
+    const telegramMessage = `🎉 <b>Подписка на Patreon успешно подтверждена!</b>\n\nВаша персональная ссылка (действует 7 дней):\n<a href="${inviteLink}">${inviteLink}</a>`;
+
+    const sendMsgResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: telegramId,
-        text: `🎉 Подписка на Patreon успешно подтверждена!\n\nВаша персональная ссылка (действует 7 дней):\n${inviteLink}`,
+        text: telegramMessage,
+        parse_mode: 'HTML'
       }),
     });
+
+    const sendMsgData = await sendMsgResponse.json();
+    console.log('Telegram SendMessage Response:', sendMsgData);
 
     // 7. Вывод ссылки на экран браузера
     return res.send(`
       <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
-        <p>Ссылка также продублирована вам в личные сообщения Telegram.</p>
+        <p>Ссылка отправлена в Telegram с использованием HTML-разметки.</p>
         <hr style="margin: 20px 0;">
         <h3>Ваша персональная ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
