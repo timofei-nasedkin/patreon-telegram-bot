@@ -39,7 +39,7 @@ export default async function handler(req, res) {
 
     const patreonAccessToken = tokenData.access_token;
 
-    // 2. Получаем данные профиля пользователя и запрашиваем поля member
+    // 2. Получаем данные профиля пользователя
     const patreonUrl = 'https://www.patreon.com/api/oauth2/v2/identity' + 
       '?include=memberships,memberships.campaign' +
       '&fields[member]=patron_status,is_follower,currently_entitled_amount_cents';
@@ -49,8 +49,6 @@ export default async function handler(req, res) {
     });
 
     const userData = await userResponse.json();
-    console.log('Patreon API Response with fields:', JSON.stringify(userData));
-
     const patreonUserId = userData.data?.id;
 
     if (!patreonUserId) {
@@ -87,7 +85,7 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка сохранения данных в Supabase.');
     }
 
-    // 5. Генерируем инвайт-ссылку: срок действия ровно 7 дней, без лимита по количеству людей
+    // 5. Вычисляем время жизни ссылки (+7 дней)
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -95,7 +93,9 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
     }
 
-    const expireDate = Math.floor(Date.now() / 1000) + 604800; // 7 дней в секундах
+    const nowMillis = Date.now();
+    const nowSec = Math.floor(nowMillis / 1000);
+    const expireDate = nowSec + 604800; // Ровно +7 дней в секундах
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -105,7 +105,6 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           chat_id: chatId,
           expire_date: expireDate,
-          // member_limit не передаем — ограничений по количеству входов нет
         }),
       }
     );
@@ -116,14 +115,13 @@ export default async function handler(req, res) {
       console.error('Telegram Invite Error:', inviteData);
       return res.status(500).send(`
         <h3>Ошибка при создании ссылки в Telegram</h3>
-        <p><b>Технический ответ от Telegram:</b></p>
         <pre>${JSON.stringify(inviteData, null, 2)}</pre>
       `);
     }
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 6. Отправляем инвайт-ссылку пользователю в личные сообщения Telegram
+    // 6. Дублируем отправку в личные сообщения Telegram
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -133,10 +131,26 @@ export default async function handler(req, res) {
       }),
     });
 
-    // 7. Финальный ответ в окне браузера
-    return res.send(
-      '<h2>Авторизация прошла успешно!</h2><p>Ссылка-приглашение отправлена вам в личные сообщения в Telegram. Можете закрыть это окно.</p>'
-    );
+    // 7. Вывод результата и времени прямо в окно браузера
+    return res.send(`
+      <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto;">
+        <h2 style="color: green;">Авторизация прошла успешно!</h2>
+        <p>Ссылка также отправлена вам в личные сообщения в Telegram.</p>
+        
+        <hr style="margin: 20px 0;">
+        
+        <h3>Сгенерированная ссылка:</h3>
+        <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
+        
+        <h3>Отладка времени (Server vs Telegram):</h3>
+        <ul style="background: #f4f4f4; padding: 15px; border-radius: 5px; list-style-type: none;">
+          <li><b>Текущее время сервера (ISO):</b> ${new Date(nowMillis).toISOString()}</li>
+          <li><b>Текущий Timestamp (сек):</b> ${nowSec}</li>
+          <li><b>Timestamp истечения (+7 дней):</b> ${expireDate}</li>
+          <li><b>Время истечения (ISO):</b> ${new Date(expireDate * 1000).toISOString()}</li>
+        </ul>
+      </div>
+    `);
 
   } catch (err) {
     console.error('Auth Handler Error:', err);
