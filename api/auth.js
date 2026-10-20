@@ -93,8 +93,9 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
     }
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const expireDate = nowSec + 604800; // Ровно +7 дней
+    const nowMillis = Date.now();
+    const nowSec = Math.floor(nowMillis / 1000);
+    const expireSec = nowSec + 604800; // Ровно +7 дней (в секундах для Telegram API)
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -103,8 +104,8 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          name: `User_${telegramId}_${Date.now()}`,
-          expire_date: expireDate
+          name: `User_${telegramId}_${nowMillis}`,
+          expire_date: expireSec
         }),
       }
     );
@@ -121,9 +122,24 @@ export default async function handler(req, res) {
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 6. Формируем текст с видимым таймстемпом генерации для Telegram
-    const humanTime = new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Kyiv' });
-    const telegramMessage = `🎉 <b>Подписка на Patreon успешно подтверждена!</b>\n\n⏱ <b>Время создания:</b> <code>${humanTime}</code>\n\nВаша персональная ссылка (действует 7 дней):\n<a href="${inviteLink}">${inviteLink}</a>`;
+    // 6. Красиво форматируем время создания и окончания по Киеву для сообщения
+    const formatter = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: 'Europe/Kyiv',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+
+    const createdAtKyiv = formatter.format(new Date(nowMillis));
+    const expireAtKyiv = formatter.format(new Date(expireSec * 1000));
+
+    const telegramMessage = `🎉 <b>Подписка на Patreon успешно подтверждена!</b>\n\n` +
+      `📌 <b>Создано:</b> ${createdAtKyiv}\n` +
+      `⏳ <b>Действует до:</b> ${expireAtKyiv} (по Киеву)\n\n` +
+      `Ваша персональная ссылка:\n<a href="${inviteLink}">${inviteLink}</a>`;
 
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
@@ -135,14 +151,14 @@ export default async function handler(req, res) {
       }),
     });
 
-    // 7. Вывод на экран браузера
+    // 7. Вывод в браузер
     return res.send(`
       <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
-        <p>Сообщение со временем генерации отправлено в Telegram.</p>
+        <p>Сообщение отправлено в Telegram с указанием времени по Киеву.</p>
         <hr style="margin: 20px 0;">
-        <h3>Время генерации:</h3>
-        <p><b>${humanTime}</b></p>
+        <p><b>Создано:</b> ${createdAtKyiv}</p>
+        <p><b>Действует до:</b> ${expireAtKyiv}</p>
         <h3>Ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
       </div>
