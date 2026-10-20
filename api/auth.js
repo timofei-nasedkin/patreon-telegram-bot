@@ -87,13 +87,15 @@ export default async function handler(req, res) {
       return res.status(500).send('Ошибка сохранения данных в Supabase.');
     }
 
-    // 5. Генерируем одноразовую инвайт-ссылку в закрытую группу (строго на 1 вступление)
+    // 5. Генерируем инвайт-ссылку: срок действия ровно 7 дней, без лимита по количеству людей
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!chatId) {
       return res.status(500).send('Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
     }
+
+    const expireDate = Math.floor(Date.now() / 1000) + 604800; // 7 дней в секундах
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -102,7 +104,8 @@ export default async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          member_limit: 1, // Ссылка сгорит сразу после первого же использования
+          expire_date: expireDate,
+          // member_limit не передаем — ограничений по количеству входов нет
         }),
       }
     );
@@ -126,13 +129,13 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: telegramId,
-        text: `🎉 Подписка на Patreon успешно подтверждена!\n\nВот ваша персональная ссылка для входа в закрытую группу:\n${inviteLink}`,
+        text: `🎉 Подписка на Patreon успешно подтверждена!\n\nВот ваша ссылка для входа в закрытую группу (действует 7 дней):\n${inviteLink}`,
       }),
     });
 
     // 7. Финальный ответ в окне браузера
     return res.send(
-      '<h2>Авторизация прошла успешно!</h2><p>Персональная ссылка-приглашение отправлена вам в личные сообщения в Telegram. Можете закрыть это окно.</p>'
+      '<h2>Авторизация прошла успешно!</h2><p>Ссылка-приглашение отправлена вам в личные сообщения в Telegram. Можете закрыть это окно.</p>'
     );
 
   } catch (err) {
