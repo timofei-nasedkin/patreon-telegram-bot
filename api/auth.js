@@ -39,7 +39,7 @@ export default async function handler(req, res) {
 
     const patreonAccessToken = tokenData.access_token;
 
-    // 2. Получаем данные профиля пользователя и ЯВНО запрашиваем поля member через fields[member]
+    // 2. Получаем данные профиля пользователя и запрашиваем поля member
     const patreonUrl = 'https://www.patreon.com/api/oauth2/v2/identity' + 
       '?include=memberships,memberships.campaign' +
       '&fields[member]=patron_status,is_follower,currently_entitled_amount_cents';
@@ -54,20 +54,18 @@ export default async function handler(req, res) {
     const patreonUserId = userData.data?.id;
 
     if (!patreonUserId) {
-      return res.status(400).send(`Не удалось определить ID пользователя Patreon.`);
+      return res.status(400).send('Не удалось определить ID пользователя Patreon.');
     }
 
-    // 3. Проверяем наличие активной подписки или пробного периода
+    // 3. Проверяем наличие подписки или пробного периода
     const memberships = userData.included?.filter(item => item.type === 'member') || [];
 
     const hasActiveSubscription = memberships.some(m => {
       const patronStatus = m.attributes?.patron_status;
-      // Если у пользователя есть хоть какой-то статус подписки (active_patron, decliner_patron, free_trial и т.д.)
       return (
         patronStatus === 'active_patron' || 
         patronStatus === 'declined_patron' || 
-        patronStatus === 'former_patron' === false ||
-        !!patronStatus // Принимаем любое наличие статуса членства
+        !!patronStatus // Разрешаем любой существующий статус членства (включая пробный период)
       );
     });
 
@@ -94,10 +92,10 @@ export default async function handler(req, res) {
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!chatId) {
-      return res.status(500).send('Ошибка: Не задана переменная TELEGRAM_CHAT_ID.');
+      return res.status(500).send('Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
     }
 
-    const expireDate = Math.floor(Date.now() / 1000) + 86400; // 24 часа
+    const expireDate = Math.floor(Date.now() / 1000) + 86400; // 24 часа в секундах
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -107,7 +105,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           chat_id: chatId,
           expire_date: expireDate,
-          member_limit: 1,
+          member_limit: 1, // Ссылка только на 1 человека
         }),
       }
     );
@@ -116,12 +114,17 @@ export default async function handler(req, res) {
 
     if (!inviteData.ok) {
       console.error('Telegram Invite Error:', inviteData);
-      return res.status(500).send('Не удалось сгенерировать ссылку в группу.');
+      return res.status(500).send(`
+        <h3>Ошибка при создании ссылки в Telegram</h3>
+        <p>Telegram отклонил запрос. Проверьте, дали ли вы боту права администратора с галочкой «Добавление участников» в группе.</p>
+        <p><b>Технический ответ от Telegram:</b></p>
+        <pre>${JSON.stringify(inviteData, null, 2)}</pre>
+      `);
     }
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 6. Отправляем инвайт-ссылку пользователю в Telegram
+    // 6. Отправляем инвайт-ссылку пользователю в личные сообщения Telegram
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
