@@ -8,12 +8,23 @@ const supabase = createClient(
 export default async function handler(req, res) {
   const { code, state: telegramId } = req.query;
 
+  // Вспомогательная функция для генерации красивой страницы ошибки с копируемым блоком
+  const sendErrorResponse = (status, title, errorDetails) => {
+    return res.status(status).send(`
+      <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; line-height: 1.5;">
+        <h2 style="color: #d9534f;">${title}</h2>
+        <p>При возникновении проблем, пожалуйста, свяжитесь с администратором в Telegram: <a href="https://t.me/MSOadmin2" target="_blank">@MSOadmin2</a> и передайте ему текст ошибки ниже:</p>
+        <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 13px; user-select: all;"><code>${errorDetails}</code></pre>
+      </div>
+    `);
+  };
+
   if (!code) {
-    return res.status(400).send('Ошибка: Отсутствует код авторизации от Patreon.');
+    return sendErrorResponse(400, 'Ошибка авторизации', 'Ошибка: Отсутствует код авторизации от Patreon.');
   }
 
   if (!telegramId) {
-    return res.status(400).send('Ошибка: Не найден Telegram ID (state). Попробуйте запустить бота заново через /start.');
+    return sendErrorResponse(400, 'Ошибка авторизации', 'Ошибка: Не найден Telegram ID (state). Попробуйте запустить бота заново через /start.');
   }
 
   try {
@@ -34,7 +45,7 @@ export default async function handler(req, res) {
 
     if (!tokenData.access_token) {
       console.error('Patreon Token Error:', tokenData);
-      return res.status(400).send(`Ошибка авторизации в Patreon: не удалось получить токен. Детали: ${JSON.stringify(tokenData)}`);
+      return sendErrorResponse(400, 'Ошибка Patreon API', `Patreon Token Error: ${JSON.stringify(tokenData, null, 2)}`);
     }
 
     const patreonAccessToken = tokenData.access_token;
@@ -52,7 +63,7 @@ export default async function handler(req, res) {
     const patreonUserId = userData.data?.id;
 
     if (!patreonUserId) {
-      return res.status(400).send('Не удалось определить ID пользователя Patreon.');
+      return sendErrorResponse(400, 'Ошибка профиля Patreon', 'Не удалось определить ID пользователя Patreon из ответа API.');
     }
 
     // 3. Проверяем наличие подписки или пробного периода
@@ -68,9 +79,13 @@ export default async function handler(req, res) {
     });
 
     if (!hasActiveSubscription && memberships.length === 0) {
-      return res.status(403).send(
-        '<h3>Активная подписка не найдена</h3><p>У вас нет подписки на наш Patreon. Пожалуйста, оформите её для получения доступа.</p>'
-      );
+      return res.status(403).send(`
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; line-height: 1.5;">
+          <h3 style="color: #d9534f;">Активная подписка не найдена</h3>
+          <p>У вас нет подписки на наш Patreon. Пожалуйста, оформите её для получения доступа.</p>
+          <p>Если это ошибка, обратитесь к администратору: <a href="https://t.me/MSOadmin2" target="_blank">@MSOadmin2</a></p>
+        </div>
+      `);
     }
 
     // 4. Сохраняем связку в Supabase
@@ -82,7 +97,7 @@ export default async function handler(req, res) {
 
     if (dbError) {
       console.error('Supabase Error:', dbError);
-      return res.status(500).send('Ошибка сохранения данных в Supabase.');
+      return sendErrorResponse(500, 'Ошибка базы данных', `Supabase Error: ${JSON.stringify(dbError, null, 2)}`);
     }
 
     // 5. Генерируем ссылку через Telegram API со сроком действия ровно 2 дня (48 часов = 172800 секунд)
@@ -90,7 +105,7 @@ export default async function handler(req, res) {
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!chatId) {
-      return res.status(500).send('Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
+      return sendErrorResponse(500, 'Ошибка конфигурации', 'Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
     }
 
     const nowMillis = Date.now();
@@ -114,10 +129,7 @@ export default async function handler(req, res) {
 
     if (!inviteData.ok) {
       console.error('Telegram Invite Error:', inviteData);
-      return res.status(500).send(`
-        <h3>Ошибка при создании ссылки в Telegram</h3>
-        <pre>${JSON.stringify(inviteData, null, 2)}</pre>
-      `);
+      return sendErrorResponse(500, 'Ошибка Telegram API', `Telegram Invite Error: ${JSON.stringify(inviteData, null, 2)}`);
     }
 
     const inviteLink = inviteData.result.invite_link;
@@ -139,7 +151,8 @@ export default async function handler(req, res) {
     const telegramMessage = `🎉 <b>Подписка на Patreon успешно подтверждена!</b>\n\n` +
       `📌 <b>Создано:</b> ${createdAtKyiv}\n` +
       `⏳ <b>Действует до:</b> ${expireAtKyiv} (по Киеву, 2 суток)\n\n` +
-      `Ваша персональная ссылка:\n<a href="${inviteLink}">${inviteLink}</a>`;
+      `Ваша персональная ссылка:\n<a href="${inviteLink}">${inviteLink}</a>\n\n` +
+      `💬 При возникновении вопросов обращайтесь к администратору: <a href="https://t.me/MSOadmin2">@MSOadmin2</a>`;
 
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
@@ -153,19 +166,21 @@ export default async function handler(req, res) {
 
     // 7. Вывод в браузер
     return res.send(`
-      <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto;">
+      <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; line-height: 1.5;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
-        <p>Ссылка с ограничением в 2 суток отправлена в Telegram.</p>
+        <p>Ссылка с ограничением в 2 суток отправлена вам в Telegram.</p>
         <hr style="margin: 20px 0;">
         <p><b>Создано:</b> ${createdAtKyiv}</p>
         <p><b>Действует до:</b> ${expireAtKyiv} (по Киеву)</p>
         <h3>Ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
+        <hr style="margin: 20px 0;">
+        <p>💬 Возникли вопросы? Обратитесь к администратору: <a href="https://t.me/MSOadmin2" target="_blank">@MSOadmin2</a></p>
       </div>
     `);
 
   } catch (err) {
     console.error('Auth Handler Error:', err);
-    return res.status(500).send(`Ошибка сервера: ${err.message}`);
+    return sendErrorResponse(500, 'Внутренняя ошибка сервера', `Auth Handler Exception: ${err.message}\n${err.stack || ''}`);
   }
 }
