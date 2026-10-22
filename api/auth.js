@@ -127,10 +127,39 @@ export default async function handler(req, res) {
 
     const inviteData = await telegramInviteResponse.json();
 
-    if (!inviteData.ok) {
-      console.error('Telegram Invite Error:', inviteData);
-      return sendErrorResponse(500, 'Ошибка Telegram API', `Telegram Invite Error: ${JSON.stringify(inviteData, null, 2)}`);
-    }
+    
+    
+    console.log('Invite diagnostic:', {
+  httpStatus: telegramInviteResponse.status,
+  ok: inviteData.ok,
+  error_code: inviteData.error_code,
+  description: inviteData.description,
+  nowSec,
+  expireSec,
+  requestedExpireAt: new Date(expireSec * 1000).toISOString(),
+  telegramExpireDate: inviteData.result?.expire_date,
+  telegramExpireAt: inviteData.result?.expire_date
+    ? new Date(
+        inviteData.result.expire_date * 1000
+      ).toISOString()
+    : null,
+  isRevoked: inviteData.result?.is_revoked,
+  inviteLink: inviteData.result?.invite_link
+});
+
+if (!telegramInviteResponse.ok || !inviteData.ok) {
+  console.error('Telegram Invite Error:', inviteData);
+
+  return sendErrorResponse(
+    500,
+    'Ошибка Telegram API',
+    JSON.stringify(inviteData, null, 2)
+  );
+}
+    
+    
+
+    
 
     const inviteLink = inviteData.result.invite_link;
 
