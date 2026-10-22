@@ -100,7 +100,7 @@ export default async function handler(req, res) {
       return sendErrorResponse(500, 'Ошибка базы данных', `Supabase Error: ${JSON.stringify(dbError, null, 2)}`);
     }
 
-    // 5. Генерируем ссылку через Telegram API со сроком действия ровно 2 дня (48 часов = 172800 секунд)
+    // 5. Генерируем ссылку через Telegram API с ограничением по количеству использований = 1 раз
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -109,8 +109,6 @@ export default async function handler(req, res) {
     }
 
     const nowMillis = Date.now();
-    const nowSec = Math.floor(nowMillis / 1000);
-    const expireSec = nowSec + 172800; // Ровно 2 дня в секундах
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -120,50 +118,35 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           chat_id: chatId,
           name: `User_${telegramId}_${nowMillis}`,
-          expire_date: expireSec
+          member_limit: 1 // Ссылка рассчитана ровно на 1 использование
         }),
       }
     );
 
     const inviteData = await telegramInviteResponse.json();
 
-    
-    
     console.log('Invite diagnostic:', {
-  httpStatus: telegramInviteResponse.status,
-  ok: inviteData.ok,
-  error_code: inviteData.error_code,
-  description: inviteData.description,
-  nowSec,
-  expireSec,
-  requestedExpireAt: new Date(expireSec * 1000).toISOString(),
-  telegramExpireDate: inviteData.result?.expire_date,
-  telegramExpireAt: inviteData.result?.expire_date
-    ? new Date(
-        inviteData.result.expire_date * 1000
-      ).toISOString()
-    : null,
-  isRevoked: inviteData.result?.is_revoked,
-  inviteLink: inviteData.result?.invite_link
-});
+      httpStatus: telegramInviteResponse.status,
+      ok: inviteData.ok,
+      error_code: inviteData.error_code,
+      description: inviteData.description,
+      memberLimit: inviteData.result?.member_limit,
+      isRevoked: inviteData.result?.is_revoked,
+      inviteLink: inviteData.result?.invite_link
+    });
 
-if (!telegramInviteResponse.ok || !inviteData.ok) {
-  console.error('Telegram Invite Error:', inviteData);
-
-  return sendErrorResponse(
-    500,
-    'Ошибка Telegram API',
-    JSON.stringify(inviteData, null, 2)
-  );
-}
-    
-    
-
-    
+    if (!telegramInviteResponse.ok || !inviteData.ok) {
+      console.error('Telegram Invite Error:', inviteData);
+      return sendErrorResponse(
+        500,
+        'Ошибка Telegram API',
+        JSON.stringify(inviteData, null, 2)
+      );
+    }
 
     const inviteLink = inviteData.result.invite_link;
 
-    // 6. Форматируем время создания и окончания по Киеву
+    // 6. Форматируем время создания по Киеву
     const formatter = new Intl.DateTimeFormat('ru-RU', {
       timeZone: 'Europe/Kyiv',
       day: '2-digit',
@@ -175,12 +158,12 @@ if (!telegramInviteResponse.ok || !inviteData.ok) {
     });
 
     const createdAtKyiv = formatter.format(new Date(nowMillis));
-    const expireAtKyiv = formatter.format(new Date(expireSec * 1000));
 
     const telegramMessage = `🎉 <b>Подписка на Patreon успешно подтверждена!</b>\n\n` +
       `📌 <b>Создано:</b> ${createdAtKyiv}\n` +
-      `⏳ <b>Действует до:</b> ${expireAtKyiv} (по Киеву, 2 суток)\n\n` +
+      `🎟 <b>Лимит использования:</b> ровно 1 раз\n\n` +
       `Ваша персональная ссылка:\n<a href="${inviteLink}">${inviteLink}</a>\n\n` +
+      `ℹ️ <i>Если у вас по каким-то причинам не получилось с первого раза добавиться в группу, вы можете пройти процедуру заново, начиная с обращения к нашему боту в Telegram.</i>\n\n` +
       `💬 При возникновении вопросов обращайтесь к администратору: <a href="https://t.me/MSOadmin2">@MSOadmin2</a>`;
 
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -197,12 +180,14 @@ if (!telegramInviteResponse.ok || !inviteData.ok) {
     return res.send(`
       <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; line-height: 1.5;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
-        <p>Ссылка с ограничением в 2 суток отправлена вам в Telegram.</p>
+        <p>Персональная ссылка отправлена вам в Telegram.</p>
         <hr style="margin: 20px 0;">
         <p><b>Создано:</b> ${createdAtKyiv}</p>
-        <p><b>Действует до:</b> ${expireAtKyiv} (по Киеву)</p>
+        <p><b>Лимит использования:</b> 1 раз</p>
         <h3>Ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
+        <hr style="margin: 20px 0;">
+        <p style="font-size: 14px; color: #555;">ℹ️ Если у вас по каким-то причинам не получилось с первого раза добавиться в группу, вы можете пройти процедуру заново, начиная с обращения к нашему боту в Telegram.</p>
         <hr style="margin: 20px 0;">
         <p>💬 Возникли вопросы? Обратитесь к администратору: <a href="https://t.me/MSOadmin2" target="_blank">@MSOadmin2</a></p>
       </div>
