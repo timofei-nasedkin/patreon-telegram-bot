@@ -66,19 +66,15 @@ export default async function handler(req, res) {
       return sendErrorResponse(400, 'Ошибка профиля Patreon', 'Не удалось определить ID пользователя Patreon из ответа API.');
     }
 
-    // 3. Проверяем наличие подписки или пробного периода
-    const memberships = userData.included?.filter(item => item.type === 'member') || [];
+    // 3. Проверяем наличие подписки напрямую через первый элемент included
+    const patronStatus = userData.included?.[0]?.attributes?.patron_status;
 
-    const hasActiveSubscription = memberships.some(m => {
-      const patronStatus = m.attributes?.patron_status;
-      return (
-        patronStatus === 'active_patron' || 
-        patronStatus === 'declined_patron' || 
-        !!patronStatus
-      );
-    });
+    const hasActiveSubscription = (
+      patronStatus === 'active_patron' || 
+      patronStatus === 'declined_patron'
+    );
 
-    if (!hasActiveSubscription && memberships.length === 0) {
+    if (!hasActiveSubscription) {
       return res.status(403).send(`
         <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; line-height: 1.5;">
           <h3 style="color: #d9534f;">Активная подписка не найдена</h3>
