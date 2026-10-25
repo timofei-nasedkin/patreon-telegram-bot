@@ -176,12 +176,13 @@ export default async function handler(req, res) {
         <p><b>Лимит использования:</b> 1 раз</p>
         <h3>Ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
-        <hr style="margin: 20px 0;">
+        <hr style="margin: 20px 0;">`+
         
-        <!-- ДЕБАГ БЛОК ДЛЯ ТЕСТА -->
-        <h3 style="color: #333;">🔍 Отладочные данные от Patreon API (userData):</h3>
-        <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px; max-height: 300px;"><code>${JSON.stringify(userData, null, 2)}</code></pre>
-        <hr style="margin: 20px 0;">
+  //      `<!-- ДЕБАГ БЛОК ДЛЯ ТЕСТА -->
+  //      <h3 style="color: #333;">🔍 Отладочные данные от Patreon API (userData):</h3>
+  //      <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px; max-height: 300px;"><code>${JSON.stringify(userData, null, 2)}</code></pre>`+
+       
+      `<hr style="margin: 20px 0;">
 
         <p style="font-size: 14px; color: #555;">ℹ️ Если у вас по каким-то причинам не получилось с первого раза добавиться в группу, вы можете пройти процедуру заново, начиная с обращения к нашему боту в Telegram.</p>
         <hr style="margin: 20px 0;">
