@@ -84,6 +84,10 @@ export default async function handler(req, res) {
           <h3 style="color: #d9534f;">Активная подписка не найдена</h3>
           <p>У вас нет подписки на наш Patreon. Пожалуйста, оформите её для получения доступа.</p>
           <p>Если это ошибка, обратитесь к администратору: <a href="https://t.me/MSOadmin2" target="_blank">@MSOadmin2</a></p>
+          
+          <hr style="margin: 20px 0;">
+          <h3>🔍 Отладочная информация (userData):</h3>
+          <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px;"><code>${JSON.stringify(userData, null, 2)}</code></pre>
         </div>
       `);
     }
@@ -124,16 +128,6 @@ export default async function handler(req, res) {
     );
 
     const inviteData = await telegramInviteResponse.json();
-
-    console.log('Invite diagnostic:', {
-      httpStatus: telegramInviteResponse.status,
-      ok: inviteData.ok,
-      error_code: inviteData.error_code,
-      description: inviteData.description,
-      memberLimit: inviteData.result?.member_limit,
-      isRevoked: inviteData.result?.is_revoked,
-      inviteLink: inviteData.result?.invite_link
-    });
 
     if (!telegramInviteResponse.ok || !inviteData.ok) {
       console.error('Telegram Invite Error:', inviteData);
@@ -176,7 +170,7 @@ export default async function handler(req, res) {
       }),
     });
 
-    // 7. Вывод в браузер
+    // 7. Вывод в браузер (с добавлением блока отладки userData)
     return res.send(`
       <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; line-height: 1.5;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
@@ -187,6 +181,12 @@ export default async function handler(req, res) {
         <h3>Ссылка:</h3>
         <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
         <hr style="margin: 20px 0;">
+        
+        <!-- ДЕБАГ БЛОК ДЛЯ ТЕСТА -->
+        <h3 style="color: #333;">🔍 Отладочные данные от Patreon API (userData):</h3>
+        <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px; max-height: 300px;"><code>${JSON.stringify(userData, null, 2)}</code></pre>
+        <hr style="margin: 20px 0;">
+
         <p style="font-size: 14px; color: #555;">ℹ️ Если у вас по каким-то причинам не получилось с первого раза добавиться в группу, вы можете пройти процедуру заново, начиная с обращения к нашему боту в Telegram.</p>
         <hr style="margin: 20px 0;">
         <p>💬 Возникли вопросы? Обратитесь к администратору: <a href="https://t.me/MSOadmin2" target="_blank">@MSOadmin2</a></p>
