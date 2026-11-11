@@ -65,7 +65,7 @@ export default async function handler(req, res) {
     const hasActiveSubscription = (
       patronStatus === 'active_patron' || 
       patronStatus === 'declined_patron' ||
-	  patronStatus === 'declined_patron'
+	  patronStatus === 'former_patron'
     );
 
     let Inf = `<h3>🔍 Отладочная информация (userData):</h3>
