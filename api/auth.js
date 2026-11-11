@@ -62,10 +62,11 @@ export default async function handler(req, res) {
     // 3. Проверяем наличие подписки напрямую через первый элемент included
     const patronStatus = userData.included?.[0]?.attributes?.patron_status;
 
+	  // || patronStatus === 'former_patron'
+
     const hasActiveSubscription = (
       patronStatus === 'active_patron' || 
-      patronStatus === 'declined_patron' ||
-	  patronStatus === 'former_patron'
+      patronStatus === 'declined_patron' 
     );
 
     let Inf = `<h3>🔍 Отладочная информация (userData):</h3>
