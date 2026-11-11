@@ -1,10 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
-
 export default async function handler(req, res) {
   const { code, state: telegramId } = req.query;
 
@@ -71,33 +64,52 @@ export default async function handler(req, res) {
 
     const hasActiveSubscription = (
       patronStatus === 'active_patron' || 
-      patronStatus === 'declined_patron'
+      patronStatus === 'declined_patron' ||
+	  patronStatus === 'declined_patron'
     );
 
-    if (!hasActiveSubscription) {
+    let Inf = `<h3>🔍 Отладочная информация (userData):</h3>
+	  <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px;"><code>${JSON.stringify(userData, null, 2)}</code></pre>`;
+	  
+	  Inf='';
+	
+	
+	if (!hasActiveSubscription) {
       return res.status(403).send(`
         <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; line-height: 1.5;">
           <h3 style="color: #d9534f;">Активная подписка не найдена</h3>
           <p>У вас нет подписки на наш Patreon. Пожалуйста, оформите её для получения доступа.</p>
           <p>Если это ошибка, обратитесь к администратору: <a href="https://t.me/MSOadmin2" target="_blank">@MSOadmin2</a></p>
-          
-          <hr style="margin: 20px 0;">
-          <h3>🔍 Отладочная информация (userData):</h3>
-          <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px;"><code>${JSON.stringify(userData, null, 2)}</code></pre>
-        </div>
-      `);
+          <hr style="margin: 20px 0;">${Inf}</div>`
+	    );
     }
 
-    // 4. Сохраняем связку в Supabase
-    const { error: dbError } = await supabase
-      .from('links')
-      .upsert([{ telegram_id: parseInt(telegramId), patreon_id: patreonUserId }], {
-        onConflict: 'telegram_id',
-      });
+    const nowMillis = Date.now();
 
-    if (dbError) {
-      console.error('Supabase Error:', dbError);
-      return sendErrorResponse(500, 'Ошибка базы данных', `Supabase Error: ${JSON.stringify(dbError, null, 2)}`);
+    // 4. Сохраняем связку в Google Таблицу через Apps Script Web App с защитным токеном
+    const sheetsWebhookUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL;
+    const sheetsSecretToken = process.env.SHEETS_SECRET_TOKEN;
+    
+    if (!sheetsWebhookUrl || !sheetsSecretToken) {
+      return sendErrorResponse(500, 'Ошибка конфигурации', 'Ошибка: Не заданы переменные GOOGLE_SHEETS_WEB_APP_URL или SHEETS_SECRET_TOKEN в настройках Vercel.');
+    }
+
+    const sheetResponse = await fetch(sheetsWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret_token: sheetsSecretToken,
+        telegram_id: parseInt(telegramId),
+        patreon_id: patreonUserId,
+        created_at: new Date(nowMillis).toISOString()
+      }),
+    });
+
+    const sheetResult = await sheetResponse.json();
+
+    if (!sheetResponse.ok || sheetResult.status !== 'success') {
+      console.error('Google Sheets Error:', sheetResult);
+      return sendErrorResponse(500, 'Ошибка базы данных (Google Sheets)', `Google Sheets Error: ${JSON.stringify(sheetResult, null, 2)}`);
     }
 
     // 5. Генерируем ссылку через Telegram API с ограничением по количеству использований = 1 раз
@@ -107,8 +119,6 @@ export default async function handler(req, res) {
     if (!chatId) {
       return sendErrorResponse(500, 'Ошибка конфигурации', 'Ошибка: Не задана переменная TELEGRAM_CHAT_ID в настройках Vercel.');
     }
-
-    const nowMillis = Date.now();
 
     const telegramInviteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
@@ -166,7 +176,7 @@ export default async function handler(req, res) {
       }),
     });
 
-    // 7. Вывод в браузер (с добавлением блока отладки userData)
+    // 7. Вывод в браузер
     return res.send(`
       <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; line-height: 1.5;">
         <h2 style="color: green;">Авторизация прошла успешно!</h2>
@@ -175,14 +185,8 @@ export default async function handler(req, res) {
         <p><b>Создано:</b> ${createdAtKyiv}</p>
         <p><b>Лимит использования:</b> 1 раз</p>
         <h3>Ссылка:</h3>
-        <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>`+
-                    
-   //     `<hr style="margin: 20px 0;">
-  //      <!-- ДЕБАГ БЛОК ДЛЯ ТЕСТА -->
-  //      <h3 style="color: #333;">🔍 Отладочные данные от Patreon API (userData):</h3>
-  //      <pre style="background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px; max-height: 300px;"><code>${JSON.stringify(userData, null, 2)}</code></pre>`+
-       
-      `<hr style="margin: 20px 0;">
+        <p><a href="${inviteLink}" target="_blank" style="font-size: 16px; word-break: break-all;">${inviteLink}</a></p>
+        <hr style="margin: 20px 0;">
         <p style="font-size: 14px; color: #555;">ℹ️ Если у вас по каким-то причинам не получилось с первого раза добавиться в группу, вы можете пройти процедуру заново, начиная с обращения к нашему боту в Telegram.</p>
         <hr style="margin: 20px 0;">
         <p>💬 Возникли вопросы? Обратитесь к администратору: <a href="https://t.me/MSOadmin2" target="_blank">@MSOadmin2</a></p>
